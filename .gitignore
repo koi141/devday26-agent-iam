@@ -1,10 +1,47 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
+.agents/
+knowledge/
+observability-template/
+.specify/
+.env.example
+specs/
 
 # Virtual environments
-.venv
+.venv/
+venv/
+
+# Environment files
+.env
+.env.*
+.env.example
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Logs/temp
+*.log
+*.tmp
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Kubernetes/Secrets
+*.secret.yaml
+secrets/
+.kube/
+kubeconfig*
+*.key
+*.crt

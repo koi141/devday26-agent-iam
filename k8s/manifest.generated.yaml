@@ -1,0 +1,223 @@
+apiVersion: v1
+data:
+  AGENT_RUNTIME_MODE: standalone
+  DOMAIN_CLIENT_SECRET_NAME: domain-client-credential
+  LLM_GATEWAY: litellm
+  LLM_MAX_TOKENS: "1024"
+  LLM_MODEL: gemini-2.5-pro
+  LLM_PROVIDER: gemini
+  LLM_RETRY_COUNT: "2"
+  LLM_TEMPERATURE: "0.2"
+  LLM_TIMEOUT_SECONDS: "10"
+  domain_url: https://idcs-fd7b74bda9fa4b58b28948feef16d8ca.identity.oraclecloud.com:443
+  genai_project: agents
+kind: ConfigMap
+metadata:
+  name: iam-agent-config
+  namespace: agents
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iam-agent
+  namespace: agents
+spec:
+  ports:
+  - name: http-backend
+    port: 80
+    protocol: TCP
+    targetPort: 8000
+  selector:
+    app: iam-agent
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iam-agent
+  namespace: agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iam-agent
+  template:
+    metadata:
+      labels:
+        app: iam-agent
+    spec:
+      containers:
+      - args:
+        - iam_agent.api.orch_routes:app
+        - --host
+        - 0.0.0.0
+        - --port
+        - "8000"
+        command:
+        - uv
+        - run
+        - uvicorn
+        env:
+        - name: compartment_ocid
+          valueFrom:
+            secretKeyRef:
+              key: compartment_ocid
+              name: iam-agent-runtime-config
+        - name: hr_database_user
+          valueFrom:
+            secretKeyRef:
+              key: hr_database_user
+              name: iam-agent-runtime-config
+        - name: hr_database_pass
+          valueFrom:
+            secretKeyRef:
+              key: hr_database_pass
+              name: iam-agent-runtime-config
+        - name: hr_database_connectstr
+          valueFrom:
+            secretKeyRef:
+              key: hr_database_connectstr
+              name: iam-agent-runtime-config
+        - name: domain_client_id
+          valueFrom:
+            secretKeyRef:
+              key: client_id
+              name: domain-client-credential
+        - name: domain_client_secret
+          valueFrom:
+            secretKeyRef:
+              key: client_secret
+              name: domain-client-credential
+        - name: domain_scope
+          valueFrom:
+            secretKeyRef:
+              key: scope
+              name: domain-client-credential
+        - name: token_url
+          valueFrom:
+            secretKeyRef:
+              key: token_url
+              name: domain-client-credential
+        - name: genai_baseurl
+          valueFrom:
+            secretKeyRef:
+              key: base_url
+              name: oci-genai-api-key
+        - name: genai_api_key
+          valueFrom:
+            secretKeyRef:
+              key: api_key
+              name: oci-genai-api-key
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: GEMINI_API_KEY
+              name: gemini-api-key
+        - name: LANGFUSE_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              key: langfuse_public_key
+              name: iam-agent-langfuse
+        - name: LANGFUSE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              key: langfuse_secret_key
+              name: iam-agent-langfuse
+        - name: LANGFUSE_ENABLED
+          valueFrom:
+            secretKeyRef:
+              key: langfuse_enabled
+              name: iam-agent-langfuse
+        - name: LANGFUSE_HOST
+          valueFrom:
+            secretKeyRef:
+              key: langfuse_host
+              name: iam-agent-langfuse
+        - name: LANGFUSE_ORG_ID
+          valueFrom:
+            secretKeyRef:
+              key: langfuse_org_id
+              name: iam-agent-langfuse
+        - name: LANGFUSE_ORG_NAME
+          valueFrom:
+            secretKeyRef:
+              key: langfuse_org_name
+              name: iam-agent-langfuse
+        - name: LANGFUSE_PROJECT_ID
+          valueFrom:
+            secretKeyRef:
+              key: langfuse_project_id
+              name: iam-agent-langfuse
+        - name: LANGFUSE_PROJECT_NAME
+          valueFrom:
+            secretKeyRef:
+              key: langfuse_project_name
+              name: iam-agent-langfuse
+        envFrom:
+        - configMapRef:
+            name: iam-agent-config
+        image: nrt.ocir.io/nr3c2r62ocsa/koi-ocir-dev/iam-agent:v1-20260430124910
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 3
+        name: iam-agent
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+        volumeMounts:
+        - mountPath: /var/run/secrets/domain-client
+          name: domain-client-credential
+          readOnly: true
+      imagePullSecrets:
+      - name: ocir-image-pull
+      serviceAccountName: iam-agent
+      volumes:
+      - name: domain-client-credential
+        secret:
+          secretName: domain-client-credential
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    oci-native-ingress.oraclecloud.com/allowlist-cidrs: 0.0.0.0/0
+    oci-native-ingress.oraclecloud.com/backend-protocol: HTTP
+    oci-native-ingress.oraclecloud.com/backend-tls-enabled: "false"
+    oci-native-ingress.oraclecloud.com/certificate-ocid: ocid1.certificate.oc1.ap-tokyo-1.amaaaaaatgpiiviawnigjvrj5eederdkoiejs7x3vbjckuibted7m2re5pja
+    oci-native-ingress.oraclecloud.com/force-ssl-redirect: "true"
+    oci-native-ingress.oraclecloud.com/healthcheck-path: /health
+    oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
+    oci-native-ingress.oraclecloud.com/healthcheck-return-code: "200"
+    oci-native-ingress.oraclecloud.com/http-listener-port: "80"
+    oci-native-ingress.oraclecloud.com/https-listener-port: "443"
+    oci-native-ingress.oraclecloud.com/ssl-redirect-status-code: "301"
+  name: iam-agent
+  namespace: agents
+spec:
+  ingressClassName: ic
+  rules:
+  - host: agent.koin3z.com
+    http:
+      paths:
+      - backend:
+          service:
+            name: iam-agent
+            port:
+              number: 80
+        path: /
+        pathType: Prefix

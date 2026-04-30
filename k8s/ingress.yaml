@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: iam-agent
+  namespace: agents
+  annotations:
+    oci-native-ingress.oraclecloud.com/allowlist-cidrs: "0.0.0.0/0"
+    oci-native-ingress.oraclecloud.com/backend-protocol: "HTTP"
+    oci-native-ingress.oraclecloud.com/backend-tls-enabled: "false"
+    oci-native-ingress.oraclecloud.com/certificate-ocid: "ocid1.certificate.oc1.ap-tokyo-1.amaaaaaatgpiiviawnigjvrj5eederdkoiejs7x3vbjckuibted7m2re5pja"
+    oci-native-ingress.oraclecloud.com/force-ssl-redirect: "true"
+    oci-native-ingress.oraclecloud.com/healthcheck-path: "/health"
+    oci-native-ingress.oraclecloud.com/healthcheck-protocol: "HTTP"
+    oci-native-ingress.oraclecloud.com/healthcheck-return-code: "200"
+    oci-native-ingress.oraclecloud.com/http-listener-port: "80"
+    oci-native-ingress.oraclecloud.com/https-listener-port: "443"
+    oci-native-ingress.oraclecloud.com/ssl-redirect-status-code: "301"
+spec:
+  ingressClassName: ic
+  rules:
+    - host: agent.koin3z.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: iam-agent
+                port:
+                  number: 80

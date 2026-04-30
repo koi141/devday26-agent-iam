@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: iam-agent
+  namespace: agents
+spec:
+  type: ClusterIP
+  selector:
+    app: iam-agent
+  ports:
+    - name: http-backend
+      port: 80
+      targetPort: 8000
+      protocol: TCP

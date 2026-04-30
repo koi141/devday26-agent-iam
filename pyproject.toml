@@ -5,9 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "chainlit>=2.0.0",
+    "fastapi>=0.115.0",
+    "oci>=2.150.0",
+    "oracledb>=2.2.1",
     "oauthlib>=3.3.1",
     "oci-genai-auth>=1.0.0",
     "oci-openai>=1.1.0",
     "openai>=2.32.0",
+    "pydantic>=2.10.0",
+    "python-dotenv>=1.0.1",
     "requests>=2.33.1",
+    "uvicorn>=0.30.0",
 ]

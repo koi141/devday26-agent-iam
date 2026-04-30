@@ -1,0 +1,159 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iam-agent
+  namespace: agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iam-agent
+  template:
+    metadata:
+      labels:
+        app: iam-agent
+    spec:
+      serviceAccountName: iam-agent
+      imagePullSecrets:
+        - name: ocir-image-pull
+      containers:
+        - name: iam-agent
+          image: nrt.ocir.io/nr3c2r62ocsa/koi-ocir-dev/iam-agent:v1-20260430124910
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: iam-agent-config
+          command:
+            - uv
+            - run
+            - uvicorn
+          args:
+            - iam_agent.api.orch_routes:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+          env:
+            - name: compartment_ocid
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-runtime-config
+                  key: compartment_ocid
+            - name: hr_database_user
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-runtime-config
+                  key: hr_database_user
+            - name: hr_database_pass
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-runtime-config
+                  key: hr_database_pass
+            - name: hr_database_connectstr
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-runtime-config
+                  key: hr_database_connectstr
+            - name: domain_client_id
+              valueFrom:
+                secretKeyRef:
+                  name: domain-client-credential
+                  key: client_id
+            - name: domain_client_secret
+              valueFrom:
+                secretKeyRef:
+                  name: domain-client-credential
+                  key: client_secret
+            - name: domain_scope
+              valueFrom:
+                secretKeyRef:
+                  name: domain-client-credential
+                  key: scope
+            - name: token_url
+              valueFrom:
+                secretKeyRef:
+                  name: domain-client-credential
+                  key: token_url
+            - name: genai_baseurl
+              valueFrom:
+                secretKeyRef:
+                  name: oci-genai-api-key
+                  key: base_url
+            - name: genai_api_key
+              valueFrom:
+                secretKeyRef:
+                  name: oci-genai-api-key
+                  key: api_key
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-api-key
+                  key: GEMINI_API_KEY
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-langfuse
+                  key: langfuse_public_key
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-langfuse
+                  key: langfuse_secret_key
+            - name: LANGFUSE_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-langfuse
+                  key: langfuse_enabled
+            - name: LANGFUSE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-langfuse
+                  key: langfuse_host
+            - name: LANGFUSE_ORG_ID
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-langfuse
+                  key: langfuse_org_id
+            - name: LANGFUSE_ORG_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-langfuse
+                  key: langfuse_org_name
+            - name: LANGFUSE_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-langfuse
+                  key: langfuse_project_id
+            - name: LANGFUSE_PROJECT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: iam-agent-langfuse
+                  key: langfuse_project_name
+          volumeMounts:
+            - name: domain-client-credential
+              mountPath: /var/run/secrets/domain-client
+              readOnly: true
+      volumes:
+        - name: domain-client-credential
+          secret:
+            secretName: domain-client-credential
