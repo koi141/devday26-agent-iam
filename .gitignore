@@ -15,6 +15,7 @@ observability-template/
 .specify/
 .env.example
 specs/
+AGENTS.md
 
 # Virtual environments
 .venv/
