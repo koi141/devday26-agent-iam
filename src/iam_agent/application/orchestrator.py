@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Callable
 
 from iam_agent.application.access_diagnoser import AccessDiagnoser
 from iam_agent.application.input_guard import InputGuard
 from iam_agent.application.permission_investigator import PermissionInvestigator
 from iam_agent.application.retry_controller import RetryController
 from iam_agent.application.skill_executor import SkillExecutor
-from iam_agent.domain.contracts import AuditPayload, NormalizedResponse
+from iam_agent.application.error_notifier import format_runtime_preflight_messages
+from iam_agent.application.runtime_preflight import RuntimePreflightResult, summarize_runtime_preflight
+from iam_agent.domain.contracts import AuditPayload, ErrorDetail, NormalizedResponse
 from iam_agent.domain.models import ActionPlanStep, UserInputTurn
 from iam_agent.infra.logging.audit_logger import AuditLogger
 from iam_agent.application.action_planner import ActionPlanner
@@ -37,6 +39,8 @@ class Orchestrator:
         telemetry_bridge: TelemetryBridge | None = None,
         quality_evaluator: QualityEvaluator | None = None,
         snapshot_store: SnapshotStore | None = None,
+        runtime_preflight_checker: Callable[[], RuntimePreflightResult] | None = None,
+        migration_context: dict[str, str] | None = None,
     ) -> None:
         self.action_planner = action_planner
         self.input_guard = input_guard
@@ -51,6 +55,8 @@ class Orchestrator:
         self.telemetry_bridge = telemetry_bridge
         self.quality_evaluator = quality_evaluator or QualityEvaluator()
         self.snapshot_store = snapshot_store or SnapshotStore()
+        self.runtime_preflight_checker = runtime_preflight_checker
+        self.migration_context = migration_context or {}
         if self.a2a_service is not None and hasattr(self.a2a_service, "bind_orchestrator"):
             try:
                 self.a2a_service.bind_orchestrator(self)
@@ -226,12 +232,63 @@ class Orchestrator:
             correlation_id=str(response.audit.correlation_id or ""),
             peer_agent=str(response.audit.peer_agent or ""),
             delegation_outcome=str(response.audit.delegation_outcome or ""),
+            context_name=str(self.migration_context.get("context_name") or ""),
+            namespace=str(self.migration_context.get("namespace") or ""),
+            ingress_host=str(self.migration_context.get("ingress_host") or ""),
+        )
+
+    def _runtime_preflight_guard(self, *, turn_id: str) -> NormalizedResponse | None:
+        if self.runtime_preflight_checker is None:
+            return None
+
+        result = self.runtime_preflight_checker()
+        blocking = result.blocking_issues()
+        if not blocking:
+            return None
+
+        facts, interpretation, proposal = format_runtime_preflight_messages(blocking)
+        return NormalizedResponse(
+            status="error",
+            facts=facts,
+            interpretation=interpretation,
+            proposal=proposal,
+            data=summarize_runtime_preflight(result),
+            meta={
+                "missing_items": [issue.target for issue in blocking],
+                "impact_scope": [issue.impact for issue in blocking],
+                "next_action": [issue.required_action for issue in blocking],
+            },
+            errors=[
+                ErrorDetail(
+                    code="runtime_config_invalid",
+                    message="起動前設定検証で不足または不整合を検出しました。",
+                    retryable=False,
+                )
+            ],
+            audit=AuditPayload(
+                target={"phase": "runtime_preflight"},
+                input_summary={"turn_id": turn_id},
+                decision_reason=[f"{issue.category}:{issue.target}" for issue in blocking],
+                result="error",
+            ),
         )
 
     def handle_user_input(self, turn_id: str, user_input: str) -> NormalizedResponse:
         turn = UserInputTurn(turn_id=turn_id, user_input=user_input)
         self.retry_controller.reset()
         trace = self._start_trace(turn_id=turn.turn_id, user_input=turn.user_input)
+
+        preflight_block = self._runtime_preflight_guard(turn_id=turn.turn_id)
+        if preflight_block is not None:
+            trace_meta = self._finalize_trace(
+                trace=trace,
+                response=preflight_block,
+                validation_status="not_aligned",
+                missing_input_detected=True,
+                compatibility_status="single_tool_passthrough",
+            )
+            self._attach_meta(preflight_block, trace_meta=trace_meta, compatibility_status="single_tool_passthrough")
+            return preflight_block
 
         planning_span = ""
         if trace and self.telemetry_bridge:

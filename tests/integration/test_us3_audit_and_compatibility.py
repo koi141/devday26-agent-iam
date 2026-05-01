@@ -24,6 +24,9 @@ def test_us3_audit_contains_trace_and_compatibility(caplog) -> None:
             trace_id="trace-1",
             telemetry_delivery_status="sent",
             telemetry_delivery_reason="ok",
+            context_name="oke-iam",
+            namespace="iam",
+            ingress_host="iam.devday26.sogawa-yk.com",
         )
 
     assert caplog.records
@@ -32,3 +35,6 @@ def test_us3_audit_contains_trace_and_compatibility(caplog) -> None:
     assert payload["trace_id"] == "trace-1"
     assert payload["compatibility_status"] == "single_tool_passthrough"
     assert payload["telemetry_delivery_status"] == "sent"
+    assert payload["context_name"] == "oke-iam"
+    assert payload["namespace"] == "iam"
+    assert payload["ingress_host"] == "iam.devday26.sogawa-yk.com"

@@ -109,3 +109,8 @@ def test_a2a_capabilities_requires_trusted_source_agent() -> None:
 
     allowed = service.capabilities(source_agent_id="peer-1", auth_token="peer-token")
     assert allowed["agent_id"] == "iam-agent"
+    assert isinstance(allowed.get("description"), str)
+    assert allowed["description"]
+    assert isinstance(allowed.get("skills"), list)
+    assert allowed["skills"]
+    assert any("list_users" in (skill.get("related_operations") or []) for skill in allowed["skills"])

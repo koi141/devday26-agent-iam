@@ -9,6 +9,7 @@ from fastapi import Header
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from iam_agent.app.chainlit_entry import get_orchestrator, get_snapshot, process_message
 
@@ -18,6 +19,34 @@ app = FastAPI(
     version="0.1.0",
     description="OCI IAM / Identity Domains 運用支援エージェント",
 )
+
+
+class _SocketPathCompatMiddleware:
+    """旧UIキャッシュ向けに socket.io パスを /ui 配下へ互換変換する。"""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") in {"http", "websocket"}:
+            path = str(scope.get("path") or "")
+            if path.startswith("/ws/socket.io") or path.startswith("/socket.io"):
+                patched = dict(scope)
+                patched["path"] = f"/ui{path}"
+                raw_path = scope.get("raw_path")
+                if isinstance(raw_path, (bytes, bytearray)):
+                    patched["raw_path"] = b"/ui" + bytes(raw_path)
+                scope = patched
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_SocketPathCompatMiddleware)
+
+
+@app.on_event("startup")
+def startup_preflight() -> None:
+    # 起動時にOrchestratorを構築し、設定不足があれば起動を失敗させる。
+    get_orchestrator()
 
 
 class ChatRequest(BaseModel):

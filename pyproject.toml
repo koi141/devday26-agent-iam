@@ -13,6 +13,7 @@ dependencies = [
     "oci-genai-auth>=1.0.0",
     "oci-openai>=1.1.0",
     "openai>=2.32.0",
+    "langfuse>=2.0.0",
     "pydantic>=2.10.0",
     "python-dotenv>=1.0.1",
     "requests>=2.33.1",

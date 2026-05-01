@@ -79,3 +79,21 @@ def test_gateway_chat_entrypoint_is_unchanged_after_a2a_extension() -> None:
     response = routes.chat_ui_redirect()
     assert response.status_code == 307
     assert response.headers.get("location") == "/ui"
+
+
+def test_gateway_sets_access_denial_route_mode_without_breaking_meta(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routes,
+        "process_message",
+        lambda message: {
+            "status": "success",
+            "facts": [],
+            "interpretation": [],
+            "proposal": [],
+            "meta": {"trace_id": "trace-deny", "telemetry_delivery_status": "sent"},
+        },
+    )
+    payload = routes.chat_api(routes.ChatRequest(message="この操作はアクセス拒否されました。原因を調べて"))
+    assert payload["meta"]["route_mode"] == "access_denial_troubleshooting"
+    assert payload["meta"]["compatibility"]["additive_layer_active"] is True
+    assert payload["meta"]["trace_id"] == "trace-deny"

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: iam-agent
-  namespace: agents
+  namespace: iam
 spec:
   replicas: 1
   selector:
@@ -15,11 +15,11 @@ spec:
     spec:
       serviceAccountName: iam-agent
       imagePullSecrets:
-        - name: ocir-image-pull
+        - name: ocir-secret
       containers:
         - name: iam-agent
-          image: nrt.ocir.io/nr3c2r62ocsa/koi-ocir-dev/iam-agent:v1-20260430124910
-          imagePullPolicy: IfNotPresent
+          image: nrt.ocir.io/nr3c2r62ocsa/koi-ocir-dev/iam-agent:v1-20260501104809
+          imagePullPolicy: Always
           envFrom:
             - configMapRef:
                 name: iam-agent-config
@@ -89,26 +89,11 @@ spec:
                 secretKeyRef:
                   name: domain-client-credential
                   key: scope
-            - name: token_url
-              valueFrom:
-                secretKeyRef:
-                  name: domain-client-credential
-                  key: token_url
-            - name: genai_baseurl
-              valueFrom:
-                secretKeyRef:
-                  name: oci-genai-api-key
-                  key: base_url
             - name: genai_api_key
               valueFrom:
                 secretKeyRef:
-                  name: oci-genai-api-key
-                  key: api_key
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: gemini-api-key
-                  key: GEMINI_API_KEY
+                  name: oci-genai-key
+                  key: api_keys
             - name: LANGFUSE_PUBLIC_KEY
               valueFrom:
                 secretKeyRef:

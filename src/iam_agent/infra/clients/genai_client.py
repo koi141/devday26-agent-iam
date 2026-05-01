@@ -4,7 +4,8 @@ import json
 import re
 from typing import Any
 
-from iam_agent.application.errors import MissingCredentialError, TemporaryUpstreamFailure
+from iam_agent.application.errors import InvalidArgumentError, MissingCredentialError, TemporaryUpstreamFailure
+from iam_agent.config.runtime_contract import EXPECTED_GENAI_PROJECT_ID, EXPECTED_GENAI_PROJECT_NAME
 from iam_agent.config.settings import Settings
 
 try:
@@ -29,12 +30,28 @@ class GenAIClient:
         self._client = None
 
         if OpenAI is not None and settings.genai_api_key and settings.genai_baseurl:
-            self._client = OpenAI(api_key=settings.genai_api_key, base_url=settings.genai_baseurl)
+            # OCI Generative AI Responses API は OpenAI-Project ヘッダーが必須。
+            self._client = OpenAI(
+                api_key=settings.genai_api_key,
+                base_url=settings.genai_baseurl,
+                project=settings.genai_project_id,
+            )
 
     def _ensure_credentials(self) -> None:
         missing = self.settings.missing_for_route("genai_api_key")
         if missing:
             raise MissingCredentialError(missing)
+        self._ensure_project_binding()
+
+    def _ensure_project_binding(self) -> None:
+        if self.settings.genai_project != EXPECTED_GENAI_PROJECT_NAME:
+            raise InvalidArgumentError(
+                f"genai_project が不正です。期待値={EXPECTED_GENAI_PROJECT_NAME}, 実値={self.settings.genai_project or '(empty)'}"
+            )
+        if self.settings.genai_project_id != EXPECTED_GENAI_PROJECT_ID:
+            raise InvalidArgumentError(
+                f"genai_project_id が不正です。期待値={EXPECTED_GENAI_PROJECT_ID}, 実値={self.settings.genai_project_id or '(empty)'}"
+            )
 
     def _response_text(self, response: Any) -> str:
         try:
@@ -45,6 +62,83 @@ class GenAIClient:
             return str(response)
         except Exception:
             return ""
+
+    @staticmethod
+    def _preview(values: list[str], *, limit: int = 8) -> str:
+        visible = values[:limit]
+        text = ", ".join(visible)
+        remaining = len(values) - len(visible)
+        if remaining > 0:
+            return f"{text} ほか{remaining}件"
+        return text
+
+    def _summarize_locally(self, payload: dict[str, Any]) -> dict[str, list[str]]:
+        facts: list[str] = []
+        interpretation: list[str] = ["GenAI要約の生成に失敗したため、実行結果を要約して返します。"]
+        proposal: list[str] = []
+
+        results = payload.get("results")
+        if not isinstance(results, list):
+            return {
+                "facts": ["処理結果を受領しました。"],
+                "interpretation": interpretation,
+                "proposal": ["再試行するか、対象条件を具体化してください。"],
+            }
+
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("status") or "") != "success":
+                continue
+
+            tool_name = str(item.get("tool_name") or "")
+            data = item.get("data")
+            if not isinstance(data, dict):
+                continue
+
+            if tool_name == "list_users":
+                users = data.get("users")
+                if isinstance(users, list):
+                    total_raw = data.get("total_results")
+                    try:
+                        total = int(total_raw) if total_raw is not None else len(users)
+                    except Exception:
+                        total = len(users)
+                    facts.append(f"ユーザー一覧を取得しました（{total}件）。")
+                    names = [
+                        str(user.get("userName") or user.get("displayName") or "").strip()
+                        for user in users
+                        if isinstance(user, dict)
+                    ]
+                    names = [name for name in names if name]
+                    if names:
+                        facts.append(f"主なユーザー: {self._preview(names)}")
+                    proposal.append("対象ユーザーを指定すると、詳細情報を続けて確認できます。")
+                continue
+
+            if tool_name == "list_policies":
+                policies = data.get("policies")
+                if isinstance(policies, list):
+                    facts.append(f"ポリシー一覧を取得しました（{len(policies)}件）。")
+                    names = [
+                        str(policy.get("name") or "").strip()
+                        for policy in policies
+                        if isinstance(policy, dict)
+                    ]
+                    names = [name for name in names if name]
+                    if names:
+                        facts.append(f"ポリシー名: {self._preview(names)}")
+                    interpretation.append("各ポリシーの statements から、許可操作の範囲を確認できます。")
+                    proposal.append("対象ポリシー名を指定すると、影響範囲を具体的に説明できます。")
+                continue
+
+        if not facts:
+            facts = ["処理結果を受領しました。"]
+        if len(interpretation) == 1 and not facts:
+            interpretation.append("実行結果から解釈可能な情報を抽出できませんでした。")
+        if not proposal:
+            proposal = ["必要に応じて対象ユーザー名やポリシー名を指定して再実行してください。"]
+        return {"facts": facts, "interpretation": interpretation, "proposal": proposal}
 
     def plan_action(self, user_input: str, available_tools: list[str]) -> dict[str, Any]:
         self._ensure_credentials()
@@ -104,13 +198,9 @@ class GenAIClient:
                     "proposal": parsed.get("proposal") or [],
                 }
         except Exception:  # pragma: no cover - network dependent
-            pass
+            return self._summarize_locally(payload)
 
-        return {
-            "facts": ["処理結果を受領しました。"],
-            "interpretation": ["要約生成に失敗したためフォールバックを返します。"],
-            "proposal": ["再試行するか、入力条件を具体化してください。"],
-        }
+        return self._summarize_locally(payload)
 
     def validate_semantic_alignment(self, user_input: str, answer_text: str) -> dict[str, Any]:
         self._ensure_credentials()

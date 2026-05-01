@@ -26,6 +26,7 @@ from iam_agent.domain.models import (
     A2AAuditRecord,
     A2ACapabilityOperation,
     A2ACapabilityProfile,
+    A2ACapabilitySkill,
     A2AExecutionRequest,
     A2AExecutionStep,
     A2AIdempotencyRecord,
@@ -91,10 +92,9 @@ class A2ACollaborationService:
                 proposal=["peer registry と認証トークンを確認してください。"],
             )
 
+        sorted_operations = sorted(tool_name for tool_name in self._supported_operations if tool_name != "delegate_to_peer")
         operations: list[dict[str, Any]] = []
-        for tool_name in self._supported_operations:
-            if tool_name == "delegate_to_peer":
-                continue
+        for tool_name in sorted_operations:
             operation = A2ACapabilityOperation(
                 operation_name=tool_name,
                 required_inputs=TOOL_REQUIRED_INPUTS.get(tool_name, []),
@@ -106,6 +106,11 @@ class A2ACollaborationService:
         profile = A2ACapabilityProfile(
             agent_id=self.settings.a2a_agent_id,
             version="1.0.0",
+            description=(
+                "OCI IAM / Identity Domains の運用支援エージェントです。"
+                "ユーザー・グループ管理、権限調査、ポリシー/リソース参照、HR補完を実行できます。"
+            ),
+            skills=self._build_capability_skills(sorted_operations),
             operations=[
                 A2ACapabilityOperation(
                     operation_name=str(item.get("operation_name") or ""),
@@ -360,6 +365,59 @@ class A2ACollaborationService:
         supported = set(self.skill_executor.handlers.keys())
         supported.add("delegate_to_peer")
         return supported
+
+    @staticmethod
+    def _build_capability_skills(operations: list[str]) -> list[A2ACapabilitySkill]:
+        operation_set = set(operations)
+        skill_catalog: list[tuple[str, str, set[str]]] = [
+            (
+                "identity_user_group_ops",
+                "Identity Domains のユーザー/グループ運用（一覧・詳細・作成・所属変更）",
+                {
+                    "list_users",
+                    "get_user",
+                    "create_user",
+                    "list_groups",
+                    "get_group",
+                    "add_user_to_group",
+                    "remove_user_from_group",
+                },
+            ),
+            (
+                "permission_investigation",
+                "ユーザー権限の調査（所属グループ・関連ポリシー・実効操作の把握）",
+                {"list_users", "get_user", "list_groups", "list_policies", "get_policy", "get_last_successful_login"},
+            ),
+            (
+                "resource_inventory",
+                "OCIリソース参照（コンパートメント階層・リソース・ポリシーの把握）",
+                {"list_compartments", "list_resources", "list_policies", "get_policy"},
+            ),
+            (
+                "credential_audit",
+                "認証情報監査（資格情報一覧・最終ログイン確認）",
+                {"list_user_credentials", "get_last_successful_login"},
+            ),
+            (
+                "hr_assisted_resolution",
+                "HRデータベース補完によるユーザー特定/不足情報補完",
+                {"query_hr_database", "create_user", "add_user_to_group", "remove_user_from_group"},
+            ),
+        ]
+
+        skills: list[A2ACapabilitySkill] = []
+        for skill_name, description, required_ops in skill_catalog:
+            covered = sorted(operation_set.intersection(required_ops))
+            if not covered:
+                continue
+            skills.append(
+                A2ACapabilitySkill(
+                    skill_name=skill_name,
+                    description=description,
+                    related_operations=covered,
+                )
+            )
+        return skills
 
     def _build_validation_error(self, *, payload: dict[str, Any], violations: list[str]) -> NormalizedResponse:
         missing_inputs = [item for item in violations if item not in {"hop_count_exceeded", "loop_detected"}]

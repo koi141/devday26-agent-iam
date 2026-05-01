@@ -10,12 +10,13 @@ dist/
 wheels/
 *.egg-info/
 .agents/
-knowledge/
+knowledge/*
 observability-template/
 .specify/
 .env.example
-specs/
+specs/*
 AGENTS.md
+secret.md
 
 # Virtual environments
 .venv/

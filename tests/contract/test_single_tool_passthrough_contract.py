@@ -37,3 +37,11 @@ def test_single_tool_passthrough_resource_listing_contract() -> None:
     assert plan.request_type == "single_tool_passthrough"
     assert len(plan.steps) == 1
     assert plan.steps[0].tool_name == "list_resources"
+
+
+def test_single_tool_passthrough_user_listing_contract() -> None:
+    planner = ActionPlanner(genai_client=PlannerGenAIDummyNoStep())  # type: ignore[arg-type]
+    plan = planner.create_plan(turn_id="t3", user_input="ユーザー一覧を出して")
+    assert plan.request_type == "single_tool_passthrough"
+    assert len(plan.steps) == 1
+    assert plan.steps[0].tool_name == "list_users"

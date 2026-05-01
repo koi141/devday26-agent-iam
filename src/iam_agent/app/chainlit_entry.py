@@ -6,14 +6,17 @@ import uuid
 
 from iam_agent.application.action_planner import ActionPlanner
 from iam_agent.application.a2a_collaboration_service import A2ACollaborationService
+from iam_agent.application.errors import classify_exception
 from iam_agent.application.input_guard import InputGuard
 from iam_agent.application.orchestrator import Orchestrator
 from iam_agent.application.permission_investigator import PermissionInvestigator
 from iam_agent.application.response_summarizer import ResponseSummarizer
+from iam_agent.application.runtime_preflight import run_runtime_preflight
 from iam_agent.application.retry_controller import RetryController
 from iam_agent.application.semantic_validator import SemanticValidator
 from iam_agent.application.skill_executor import SkillExecutor
 from iam_agent.config.settings import get_settings
+from iam_agent.domain.contracts import AuditPayload, NormalizedResponse
 from iam_agent.infra.auth.identity_domain_oauth import IdentityDomainOAuthProvider
 from iam_agent.infra.auth.workload_identity import OciAuthResolver
 from iam_agent.infra.clients.a2a_peer_client import A2APeerClient
@@ -43,6 +46,11 @@ _ORCHESTRATOR: Orchestrator | None = None
 
 def build_orchestrator() -> Orchestrator:
     settings = get_settings()
+    preflight_result = run_runtime_preflight(settings)
+    blocking = preflight_result.blocking_issues()
+    if blocking:
+        details = "; ".join(f"{issue.target}: {issue.required_action}" for issue in blocking)
+        raise RuntimeError(f"起動前設定検証に失敗しました: {details}")
 
     oauth_provider = IdentityDomainOAuthProvider(settings=settings)
     identity_client = IdentityDomainClient(
@@ -141,6 +149,12 @@ def build_orchestrator() -> Orchestrator:
         telemetry_bridge=TelemetryBridge(langfuse_client=LangfuseClient(settings=settings)),
         quality_evaluator=QualityEvaluator(),
         snapshot_store=snapshot_store,
+        runtime_preflight_checker=lambda: run_runtime_preflight(settings),
+        migration_context={
+            "context_name": settings.runtime_context_name,
+            "namespace": settings.runtime_namespace,
+            "ingress_host": settings.runtime_ingress_host,
+        },
     )
 
 
@@ -157,9 +171,28 @@ def reset_orchestrator_for_test() -> None:
 
 
 def process_message(user_input: str) -> dict[str, Any]:
-    orchestrator = get_orchestrator()
     turn_id = f"turn-{uuid.uuid4()}"
-    response = orchestrator.handle_user_input(turn_id=turn_id, user_input=user_input)
+    try:
+        orchestrator = get_orchestrator()
+        response = orchestrator.handle_user_input(turn_id=turn_id, user_input=user_input)
+    except Exception as exc:
+        app_error = classify_exception(exc)
+        response = NormalizedResponse.error(
+            message=app_error.message,
+            code=app_error.code,
+            retryable=app_error.retryable,
+            proposal=[
+                "一時障害の可能性があるため、時間をおいて再試行してください。"
+                if app_error.retryable
+                else "入力条件または設定情報を確認して再実行してください。"
+            ],
+            audit=AuditPayload(
+                target={"phase": "process_message", "turn_id": turn_id},
+                input_summary={"user_input": user_input[:200]},
+                decision_reason=["未捕捉例外をフォールバック応答へ変換"],
+                result="error",
+            ),
+        )
     return response.to_dict()
 
 
@@ -213,9 +246,14 @@ if cl is not None:
             elif delivery_status == "skipped":
                 interpretation = interpretation + ["可観測性記録は無効化または資格情報不足のため送信されませんでした。"]
         except Exception as exc:  # pragma: no cover - runtime safety net
+            app_error = classify_exception(exc)
             facts = ["要求を完了できませんでした。"]
-            interpretation = [f"内部エラーが発生しました: {type(exc).__name__}"]
-            proposal = ["入力条件を確認して再試行してください。問題が続く場合は運用ログを確認してください。"]
+            interpretation = [app_error.message or "処理中に内部エラーが発生しました。"]
+            proposal = [
+                "一時障害の可能性があるため、時間をおいて再試行してください。"
+                if app_error.retryable
+                else "入力条件を確認して再試行してください。問題が続く場合は運用ログを確認してください。"
+            ]
 
         reply = (
             "### 【事実】\n"

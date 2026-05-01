@@ -45,6 +45,9 @@ class AuditLogger:
         correlation_id: str = "",
         peer_agent: str = "",
         delegation_outcome: str = "",
+        context_name: str = "",
+        namespace: str = "",
+        ingress_host: str = "",
     ) -> dict[str, Any]:
         event = AuditLogEvent(
             request_id=request_id,
@@ -67,7 +70,12 @@ class AuditLogger:
             peer_agent=peer_agent,
             delegation_outcome=delegation_outcome,
         )
-        return self.record(event)
+        payload = self.build_event(event)
+        payload["context_name"] = context_name
+        payload["namespace"] = namespace
+        payload["ingress_host"] = ingress_host
+        self.logger.info("audit_event=%s", json.dumps(payload, ensure_ascii=False, default=str))
+        return payload
 
     @staticmethod
     def _ensure_required_fields(payload: dict[str, Any]) -> dict[str, Any]:
@@ -84,5 +92,8 @@ class AuditLogger:
         payload.setdefault("tool_name", "unknown")
         payload.setdefault("skill_name", "")
         payload.setdefault("oci_request_id", "")
+        payload.setdefault("context_name", "")
+        payload.setdefault("namespace", "")
+        payload.setdefault("ingress_host", "")
         payload.setdefault("recorded_at", datetime.now(timezone.utc).isoformat())
         return payload

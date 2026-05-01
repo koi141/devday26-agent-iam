@@ -7,11 +7,6 @@ import uuid
 
 from iam_agent.config.settings import Settings
 
-EXPECTED_HOST = "https://langfuse.koin3z.com"
-EXPECTED_ORG_ID = "cmoe9rmed0006xu06afe0d9bg"
-EXPECTED_PROJECT_ID = "cmoe9rrfd000bxu06xlivnbba"
-EXPECTED_ORG_NAME = "devday-agents"
-EXPECTED_PROJECT_NAME = "iam-agent"
 HEX32_PATTERN = re.compile(r"^[0-9a-fA-F]{32}$")
 
 try:
@@ -45,17 +40,18 @@ class LangfuseClient:
         if missing:
             return BindingValidationResult(status="missing_credentials", reason=", ".join(missing))
 
-        if self.settings.langfuse_host.rstrip("/") != EXPECTED_HOST:
+        expected_host = (self.settings.langfuse_expected_host or "").rstrip("/")
+        if expected_host and self.settings.langfuse_host.rstrip("/") != expected_host:
             return BindingValidationResult(status="invalid", reason="langfuse_host mismatch")
 
         checks = (
-            (self.settings.langfuse_org_id, EXPECTED_ORG_ID, "org_id"),
-            (self.settings.langfuse_project_id, EXPECTED_PROJECT_ID, "project_id"),
-            (self.settings.langfuse_org_name, EXPECTED_ORG_NAME, "org_name"),
-            (self.settings.langfuse_project_name, EXPECTED_PROJECT_NAME, "project_name"),
+            (self.settings.langfuse_org_id, self.settings.langfuse_expected_org_id, "org_id"),
+            (self.settings.langfuse_project_id, self.settings.langfuse_expected_project_id, "project_id"),
+            (self.settings.langfuse_org_name, self.settings.langfuse_expected_org_name, "org_name"),
+            (self.settings.langfuse_project_name, self.settings.langfuse_expected_project_name, "project_name"),
         )
         for actual, expected, key in checks:
-            if actual and actual != expected:
+            if expected and actual != expected:
                 return BindingValidationResult(status="invalid", reason=f"{key} mismatch")
 
         if self._client is None:

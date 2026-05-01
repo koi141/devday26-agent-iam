@@ -4,6 +4,7 @@ import re
 import uuid
 from typing import Any, Callable
 
+from iam_agent.application.errors import classify_exception
 from iam_agent.application.input_guard import TOOL_REQUIRED_INPUTS
 from iam_agent.domain.models import ActionPlan, ActionPlanStep
 from iam_agent.infra.clients.genai_client import GenAIClient
@@ -658,7 +659,18 @@ class ActionPlanner:
             self._notify_observation(user_input=user_input, plan=plan)
             return plan
 
-        payload = self.genai_client.plan_action(user_input=user_input, available_tools=AVAILABLE_TOOLS)
+        planned_by_model = "genai"
+        plan_error_message = ""
+        payload: dict[str, Any] = {}
+        try:
+            raw_payload = self.genai_client.plan_action(user_input=user_input, available_tools=AVAILABLE_TOOLS)
+            if isinstance(raw_payload, dict):
+                payload = raw_payload
+        except Exception as exc:
+            app_error = classify_exception(exc)
+            planned_by_model = "heuristic_fallback"
+            plan_error_message = app_error.message
+
         steps_payload = payload.get("steps", []) if isinstance(payload, dict) else []
         inferred_create_user_inputs = self._infer_create_user_inputs(user_input)
         inferred_policy_inputs = self._infer_policy_inputs(user_input)
@@ -727,7 +739,11 @@ class ActionPlanner:
                     required_inputs=TOOL_REQUIRED_INPUTS.get(tool_name, []),
                     provided_inputs=provided_inputs,
                     execution_order=1,
-                    reason="フォールバックプラン",
+                    reason=(
+                        f"GenAI上流障害のためフォールバックプランを使用: {plan_error_message}"
+                        if plan_error_message
+                        else "フォールバックプラン"
+                    ),
                 )
             ]
 
@@ -746,7 +762,7 @@ class ActionPlanner:
             skill_name="single_tool_passthrough",
             request_type="single_tool_passthrough",
             steps=steps,
-            planned_by_model="genai",
+            planned_by_model=planned_by_model,
             plan_reasoning_summary=["ユーザー入力に対応するスキルを選択しました。"],
         )
         self._notify_observation(user_input=user_input, plan=plan)
@@ -760,7 +776,7 @@ class ActionPlanner:
             self.observation_hook(
                 {
                     "operation": "action_planner",
-                    "model_name": "genai",
+                    "model_name": plan.planned_by_model or "unknown",
                     "input_summary": user_input[:200],
                     "output_summary": ", ".join(summary),
                 }

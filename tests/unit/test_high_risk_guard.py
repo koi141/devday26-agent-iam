@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from iam_agent.application.errors import AppError
-from iam_agent.application.high_risk_guard import constrain_remediation_proposals, ensure_read_only_investigation
+from iam_agent.application.high_risk_guard import constrain_remediation_proposals, ensure_read_only_investigation, is_high_risk
 from iam_agent.infra.clients.identity_domain_client import IdentityDomainClient
 from iam_agent.tools.identity_domain_tools import IdentityDomainTools
 
@@ -18,6 +18,12 @@ def test_ensure_read_only_investigation_blocks_high_risk_tool() -> None:
         ensure_read_only_investigation("permission_investigation", "create_user")
 
     assert exc.value.code == "high_risk_blocked"
+
+
+def test_is_high_risk_includes_user_write_operations() -> None:
+    assert is_high_risk("create_user") is True
+    assert is_high_risk("add_user_to_group") is True
+    assert is_high_risk("remove_user_from_group") is True
 
 
 def test_constrain_remediation_proposals_removes_internal_identifiers() -> None:

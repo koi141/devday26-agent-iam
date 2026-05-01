@@ -24,13 +24,18 @@ class FakeLangfuseSdk:
 def _settings() -> Settings:
     return Settings(
         langfuse_enabled=True,
-        langfuse_host="https://langfuse.koin3z.com",
+        langfuse_host="https://langfuse.devday26.sogawa-yk.com",
         langfuse_public_key="pk-test",
         langfuse_secret_key="sk-test",
-        langfuse_org_id="cmoe9rmed0006xu06afe0d9bg",
+        langfuse_org_id="cmoij0zsj00002b073226lkr3",
         langfuse_project_id="cmoe9rrfd000bxu06xlivnbba",
-        langfuse_org_name="devday-agents",
+        langfuse_org_name="devday",
         langfuse_project_name="iam-agent",
+        langfuse_expected_host="https://langfuse.devday26.sogawa-yk.com",
+        langfuse_expected_org_id="cmoij0zsj00002b073226lkr3",
+        langfuse_expected_project_id="cmoe9rrfd000bxu06xlivnbba",
+        langfuse_expected_org_name="devday",
+        langfuse_expected_project_name="iam-agent",
     )
 
 

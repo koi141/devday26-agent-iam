@@ -2,9 +2,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: iam-agent
-  namespace: agents
+  namespace: iam
 spec:
   type: ClusterIP
+  sessionAffinity: ClientIP
   selector:
     app: iam-agent
   ports:

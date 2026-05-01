@@ -2,10 +2,17 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: iam-agent-config
-  namespace: agents
+  namespace: iam
 data:
   domain_url: "https://idcs-fd7b74bda9fa4b58b28948feef16d8ca.identity.oraclecloud.com:443"
-  genai_project: "agents"
+  genai_baseurl: "https://inference.generativeai.ap-osaka-1.oci.oraclecloud.com/openai/v1"
+  genai_project: "iam"
+  genai_project_id: "ocid1.generativeaiproject.oc1.ap-osaka-1.amaaaaaatgpiiviaq3o4mil2etytuquh7qj2qzd2s3tbxjc6kkv34xpwzivq"
+  langfuse_expected_host: "https://langfuse.devday26.sogawa-yk.com"
+  langfuse_expected_org_id: "cmoij0zsj00002b073226lkr3"
+  langfuse_expected_org_name: "devday"
+  runtime_namespace: "iam"
+  runtime_ingress_host: "iam.devday26.sogawa-yk.com"
   AGENT_RUNTIME_MODE: "standalone"
   DOMAIN_CLIENT_SECRET_NAME: "domain-client-credential"
   LLM_GATEWAY: "litellm"

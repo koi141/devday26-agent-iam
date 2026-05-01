@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from typing import Iterable
+
+from iam_agent.domain.models import ValidationIssue
+
 
 def format_missing_credential_message(missing_items: list[str]) -> str:
     return (
@@ -49,3 +53,23 @@ def format_binding_invalid_message(*, detail: str) -> str:
 def format_telemetry_delivery_failed_message(*, stage: str, detail: str, retryable: bool = True) -> str:
     suffix = "主処理は継続しました。後で再送してください。" if retryable else "主処理は継続しました。設定を見直してください。"
     return f"テレメトリ送信に失敗しました (stage={stage}): {detail} {suffix}"
+
+
+def _issue_line(issue: ValidationIssue) -> str:
+    return f"[{issue.category}] {issue.target}"
+
+
+def format_runtime_preflight_messages(issues: Iterable[ValidationIssue]) -> tuple[list[str], list[str], list[str]]:
+    issue_list = list(issues)
+    if not issue_list:
+        return (["設定検証は成功しました。"], ["必須設定は充足しています。"], ["そのまま処理を継続できます。"])
+
+    facts = ["起動前設定検証で不足または不整合を検出しました。"]
+    facts.extend(_issue_line(issue) for issue in issue_list)
+
+    interpretation = []
+    proposal = []
+    for issue in issue_list:
+        interpretation.append(f"{issue.target}: {issue.impact}")
+        proposal.append(f"{issue.target}: {issue.required_action}")
+    return (facts, interpretation, proposal)

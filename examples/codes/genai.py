@@ -1,9 +1,9 @@
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="sk-xxxxxxxxxxxxx",
-    base_url="https://inference.generativeai.ap-osaka-1.oci.oraclecloud.com/20231130/actions/v1",
-    project="ocid1.xxxxxxxxxxxxxxx"
+    api_key="sk-xxxxxxxxxxxxxx",
+    base_url="https://inference.generativeai.ap-osaka-1.oci.oraclecloud.com/openai/v1",
+    project="ocid1.generativeaiproject.oc1.ap-osaka-1.xxxxxx"
 )
 
 # Responses API

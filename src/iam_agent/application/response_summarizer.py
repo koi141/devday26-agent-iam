@@ -4,6 +4,7 @@ import ast
 import json
 from typing import Any, Callable
 
+from iam_agent.application.errors import classify_exception
 from iam_agent.domain.contracts import AuditPayload, NormalizedResponse
 from iam_agent.domain.models import ResponseDraft, SkillExecutionResult
 from iam_agent.infra.clients.genai_client import GenAIClient
@@ -87,6 +88,34 @@ class ResponseSummarizer:
         if cleaned:
             return cleaned
         return [fallback]
+
+    @staticmethod
+    def _fallback_summary_for_exception(
+        *,
+        results: list[SkillExecutionResult],
+        fallback_message: str,
+    ) -> dict[str, list[str]]:
+        failed = next((item for item in results if item.status == "error"), None)
+        if failed is not None:
+            message = failed.error_message or fallback_message or "処理中にエラーが発生しました。"
+            proposal = [
+                "一時障害の可能性があるため、時間をおいて再試行してください。"
+                if failed.retryable
+                else "入力条件または権限設定を確認して再実行してください。"
+            ]
+            return {
+                "facts": ["要求を完了できませんでした。"],
+                "interpretation": [message],
+                "proposal": proposal,
+            }
+
+        executed_tools = [item.tool_name for item in results if item.tool_name]
+        tool_summary = "、".join(executed_tools[:3]) if executed_tools else "ツール実行結果"
+        return {
+            "facts": [f"{tool_summary} を受領しました。"],
+            "interpretation": ["要約生成処理で上流障害が発生したため、フォールバック要約を返します。"],
+            "proposal": ["必要に応じて同じ依頼を再実行してください。"],
+        }
 
     def to_markdown_sections(
         self,
@@ -196,13 +225,19 @@ class ResponseSummarizer:
                 for item in results
             ],
         }
-        summary = self.genai_client.summarize_response(user_input=user_input, payload=payload)
+        generated_by_model = "genai"
+        try:
+            summary = self.genai_client.summarize_response(user_input=user_input, payload=payload)
+        except Exception as exc:
+            app_error = classify_exception(exc)
+            generated_by_model = "heuristic"
+            summary = self._fallback_summary_for_exception(results=results, fallback_message=app_error.message)
         if self.observation_hook is not None:
             try:
                 self.observation_hook(
                     {
                         "operation": "response_summarizer",
-                        "model_name": "genai",
+                        "model_name": generated_by_model,
                         "input_summary": user_input[:200],
                         "output_summary": json.dumps(summary, ensure_ascii=False)[:500],
                     }
@@ -222,7 +257,7 @@ class ResponseSummarizer:
                 "追加条件を指定して再実行してください。",
             ),
             referenced_requests=[item.request_id for item in results],
-            generated_by_model="genai",
+            generated_by_model=generated_by_model,
         )
 
     def to_normalized_response(

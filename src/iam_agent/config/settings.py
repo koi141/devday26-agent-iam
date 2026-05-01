@@ -14,7 +14,7 @@ except Exception:  # pragma: no cover - dotenv is optional at runtime
 IDENTITY_DOMAIN_REQUIRED = ("domain_url", "domain_client_id", "domain_client_secret")
 OCI_REQUIRED = ("compartment_ocid",)
 HR_DB_REQUIRED = ("hr_database_user", "hr_database_pass", "hr_database_connectstr")
-GENAI_REQUIRED = ("genai_baseurl", "genai_project", "genai_api_key")
+GENAI_REQUIRED = ("genai_baseurl", "genai_project", "genai_project_id", "genai_api_key")
 LANGFUSE_REQUIRED = ("langfuse_host", "langfuse_public_key", "langfuse_secret_key", "langfuse_org_id", "langfuse_project_id")
 A2A_REQUIRED = ("a2a_enabled", "a2a_agent_id", "a2a_peer_registry_json")
 
@@ -77,6 +77,9 @@ def _env_int_first(names: tuple[str, ...], default: int) -> int:
 def _maybe_load_dotenv() -> None:
     if load_dotenv is None:
         return
+    # クラスタ実行時は .env を設定源に使わない。ローカル検証時のみ明示許可。
+    if not _env_bool_first(("allow_dotenv", "ALLOW_DOTENV"), False):
+        return
     env_file = Path(".env")
     if env_file.exists():
         load_dotenv(env_file, override=False)
@@ -95,16 +98,22 @@ class Settings:
 
     genai_baseurl: str = ""
     genai_project: str = ""
+    genai_project_id: str = ""
     genai_api_key: str = ""
     genai_model: str = "openai.gpt-oss-120b"
 
-    langfuse_host: str = "https://langfuse.koin3z.com"
+    langfuse_host: str = "https://langfuse.devday26.sogawa-yk.com"
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_org_id: str = ""
     langfuse_project_id: str = ""
-    langfuse_org_name: str = "devday-agents"
+    langfuse_org_name: str = "devday"
     langfuse_project_name: str = "iam-agent"
+    langfuse_expected_host: str = ""
+    langfuse_expected_org_id: str = ""
+    langfuse_expected_project_id: str = ""
+    langfuse_expected_org_name: str = ""
+    langfuse_expected_project_name: str = ""
     langfuse_enabled: bool = True
 
     hr_database_user: str = ""
@@ -118,6 +127,9 @@ class Settings:
     a2a_peer_registry_json: str = ""
     a2a_peer_auth_token: str = ""
     a2a_max_hops: int = 3
+    runtime_context_name: str = ""
+    runtime_namespace: str = "iam"
+    runtime_ingress_host: str = "iam.devday26.sogawa-yk.com"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -136,15 +148,21 @@ class Settings:
             oci_profile=_env_first("oci_profile", "OCI_PROFILE", default="devdey-agent"),
             genai_baseurl=_env_first("genai_baseurl", "GENAI_BASEURL"),
             genai_project=_env_first("genai_project", "GENAI_PROJECT"),
+            genai_project_id=_env_first("genai_project_id", "GENAI_PROJECT_ID"),
             genai_api_key=_env_first("genai_api_key", "GENAI_API_KEY"),
             genai_model=_env_first("genai_model", "GENAI_MODEL", default="openai.gpt-oss-120b"),
-            langfuse_host=_env_first("langfuse_host", "LANGFUSE_HOST", default="https://langfuse.koin3z.com"),
+            langfuse_host=_env_first("langfuse_host", "LANGFUSE_HOST", default="https://langfuse.devday26.sogawa-yk.com"),
             langfuse_public_key=_env_first("langfuse_public_key", "LANGFUSE_PUBLIC_KEY"),
             langfuse_secret_key=_env_first("langfuse_secret_key", "LANGFUSE_SECRET_KEY"),
             langfuse_org_id=_env_first("langfuse_org_id", "LANGFUSE_ORG_ID"),
             langfuse_project_id=_env_first("langfuse_project_id", "LANGFUSE_PROJECT_ID"),
-            langfuse_org_name=_env_first("langfuse_org_name", "LANGFUSE_ORG_NAME", default="devday-agents"),
+            langfuse_org_name=_env_first("langfuse_org_name", "LANGFUSE_ORG_NAME", default="devday"),
             langfuse_project_name=_env_first("langfuse_project_name", "LANGFUSE_PROJECT_NAME", default="iam-agent"),
+            langfuse_expected_host=_env_first("langfuse_expected_host", "LANGFUSE_EXPECTED_HOST"),
+            langfuse_expected_org_id=_env_first("langfuse_expected_org_id", "LANGFUSE_EXPECTED_ORG_ID"),
+            langfuse_expected_project_id=_env_first("langfuse_expected_project_id", "LANGFUSE_EXPECTED_PROJECT_ID"),
+            langfuse_expected_org_name=_env_first("langfuse_expected_org_name", "LANGFUSE_EXPECTED_ORG_NAME"),
+            langfuse_expected_project_name=_env_first("langfuse_expected_project_name", "LANGFUSE_EXPECTED_PROJECT_NAME"),
             langfuse_enabled=_env_bool_first(("langfuse_enabled", "LANGFUSE_ENABLED"), True),
             hr_database_user=_env_first("hr_database_user", "HR_DATABASE_USER"),
             hr_database_pass=_env_first("hr_database_pass", "HR_DATABASE_PASS"),
@@ -157,6 +175,9 @@ class Settings:
             a2a_peer_registry_json=_env_first("a2a_peer_registry_json", "A2A_PEER_REGISTRY_JSON"),
             a2a_peer_auth_token=_env_first("a2a_peer_auth_token", "A2A_PEER_AUTH_TOKEN"),
             a2a_max_hops=max(1, _env_int_first(("a2a_max_hops", "A2A_MAX_HOPS"), 3)),
+            runtime_context_name=_env_first("runtime_context_name", "RUNTIME_CONTEXT_NAME"),
+            runtime_namespace=_env_first("runtime_namespace", "RUNTIME_NAMESPACE", default="iam"),
+            runtime_ingress_host=_env_first("runtime_ingress_host", "RUNTIME_INGRESS_HOST", default="iam.devday26.sogawa-yk.com"),
         )
 
     def missing(self, keys: Iterable[str]) -> list[str]:
@@ -186,6 +207,7 @@ class Settings:
             "oci_profile": self.oci_profile,
             "genai_baseurl": self.genai_baseurl,
             "genai_project": self.genai_project,
+            "genai_project_id": self.genai_project_id,
             "genai_api_key": "***" if self.genai_api_key else "",
             "genai_model": self.genai_model,
             "langfuse_host": self.langfuse_host,
@@ -195,6 +217,11 @@ class Settings:
             "langfuse_project_id": self.langfuse_project_id,
             "langfuse_org_name": self.langfuse_org_name,
             "langfuse_project_name": self.langfuse_project_name,
+            "langfuse_expected_host": self.langfuse_expected_host,
+            "langfuse_expected_org_id": self.langfuse_expected_org_id,
+            "langfuse_expected_project_id": self.langfuse_expected_project_id,
+            "langfuse_expected_org_name": self.langfuse_expected_org_name,
+            "langfuse_expected_project_name": self.langfuse_expected_project_name,
             "langfuse_enabled": str(self.langfuse_enabled).lower(),
             "hr_database_user": self.hr_database_user,
             "hr_database_pass": "***" if self.hr_database_pass else "",
@@ -207,6 +234,9 @@ class Settings:
             "a2a_peer_registry_json": "***" if self.a2a_peer_registry_json else "",
             "a2a_peer_auth_token": "***" if self.a2a_peer_auth_token else "",
             "a2a_max_hops": str(self.a2a_max_hops),
+            "runtime_context_name": self.runtime_context_name,
+            "runtime_namespace": self.runtime_namespace,
+            "runtime_ingress_host": self.runtime_ingress_host,
         }
 
 

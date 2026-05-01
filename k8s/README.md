@@ -21,6 +21,21 @@ kubectl apply -k k8s
 
 ## 注意
 - Secret 本体は含めていません。事前に対象Secretを作成してください。
-- 非機密値は `configmap.yaml` 側で管理してください。
+- 非機密値は `configmap.yaml` 側で管理してください（`.env` は実行経路で使用しません）。
 - `deployment.yaml` の `image` は必要に応じて更新してください。
 - `ingress.yaml` のホスト名・証明書OCIDは環境に合わせて変更してください。
+- Chainlit UI 接続安定のため、現状は `replicas: 1` で運用しています（shared LB 環境で socket.io セッション分散を回避）。
+
+## 移行先既定値
+- namespace: `iam`
+- host: `iam.devday26.sogawa-yk.com`
+- 必須 ConfigMap キー:
+  - `domain_url`
+  - `genai_baseurl`
+  - `genai_project`
+  - `genai_project_id`
+- 必須 Secret:
+  - `iam-agent-runtime-config`
+  - `domain-client-credential`
+  - `oci-genai-key`
+  - `iam-agent-langfuse`

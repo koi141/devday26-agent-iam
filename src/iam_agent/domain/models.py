@@ -156,6 +156,67 @@ class AuditLogEvent:
 
 
 @dataclass(slots=True)
+class DeploymentTarget:
+    context_name: str = ""
+    namespace: str = ""
+    domain_host: str = ""
+    ingress_class: str = ""
+    certificate_ref: str = ""
+
+
+@dataclass(slots=True)
+class RequiredConfigEntry:
+    key_name: str
+    source_type: Literal["configmap", "secret"]
+    source_name: str
+    required: bool = True
+    sensitivity: Literal["public", "secret"] = "public"
+    used_by: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class RuntimeConfigSnapshot:
+    captured_at: datetime = field(default_factory=utc_now)
+    resolved_keys: list[str] = field(default_factory=list)
+    missing_keys: list[str] = field(default_factory=list)
+    source_coverage: dict[str, dict[str, int]] = field(default_factory=dict)
+    dotenv_used: bool = False
+
+
+@dataclass(slots=True)
+class ValidationIssue:
+    issue_id: str
+    category: Literal["missing_resource", "missing_key", "invalid_value", "inconsistent_pair"]
+    target: str
+    impact: str
+    required_action: str
+    blocking: bool = True
+
+
+@dataclass(slots=True)
+class GenAIProjectBinding:
+    project_name: str
+    project_id: str
+    base_url: str
+    credential_source: str
+    consistency_status: Literal["matched", "mismatched", "unknown"] = "unknown"
+
+
+@dataclass(slots=True)
+class RuntimePreflightResult:
+    target: DeploymentTarget
+    snapshot: RuntimeConfigSnapshot
+    issues: list[ValidationIssue] = field(default_factory=list)
+    binding: GenAIProjectBinding | None = None
+
+    def blocking_issues(self) -> list[ValidationIssue]:
+        return [issue for issue in self.issues if issue.blocking]
+
+    def is_ok(self) -> bool:
+        return not self.blocking_issues()
+
+
+@dataclass(slots=True)
 class InvestigationRequest:
     request_id: str
     request_type: Literal[
@@ -271,9 +332,18 @@ class A2ACapabilityOperation:
 
 
 @dataclass(slots=True)
+class A2ACapabilitySkill:
+    skill_name: str
+    description: str
+    related_operations: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class A2ACapabilityProfile:
     agent_id: str
     version: str
+    description: str = ""
+    skills: list[A2ACapabilitySkill] = field(default_factory=list)
     operations: list[A2ACapabilityOperation] = field(default_factory=list)
     constraints: list[str] = field(default_factory=list)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from iam_agent.config.runtime_contract import EXPECTED_GENAI_PROJECT_ID, EXPECTED_GENAI_PROJECT_NAME
 from iam_agent.config.settings import Settings
 from iam_agent.infra.clients.genai_client import GenAIClient
 
@@ -27,7 +28,8 @@ class _DummyOpenAIClient:
 def test_summarize_response_accepts_datetime_payload() -> None:
     settings = Settings(
         genai_baseurl="https://example.invalid",
-        genai_project="iam-agent",
+        genai_project=EXPECTED_GENAI_PROJECT_NAME,
+        genai_project_id=EXPECTED_GENAI_PROJECT_ID,
         genai_api_key="dummy",
     )
     client = GenAIClient(settings=settings)
@@ -42,4 +44,3 @@ def test_summarize_response_accepts_datetime_payload() -> None:
 
     assert summary["facts"] == ["処理結果を受領しました。"]
     assert "2026-04-30" in dummy_client.responses.last_input
-
